@@ -17,7 +17,7 @@ import numpy as np
 
 import torch
 from torch import nn
-from rlcard.agents.random_agent import RandomAgent
+from rlcard.agents.dungeonmayhem.random_agent import RandomAgent
 
 class DMCNet(nn.Module):
     def __init__(self,
