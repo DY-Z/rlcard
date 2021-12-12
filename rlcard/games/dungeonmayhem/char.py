@@ -1,115 +1,102 @@
-from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from itertools import count
 
-# from rlcard.games.dungeonmayhem.char import DungeonMayhemCharacter
-# from rlcard.games.dungeonmayhem.game import DungeonMayhemGame
-# from rlcard.games.dungeonmayhem.paladin import DungeonMayhemPaladin
-# from rlcard.games.dungeonmayhem.rogue import DungeonMayhemRogue
+from rlcard.games.dungeonmayhem.card import DungeonMayhemCard as Card
 
-
-@dataclass(frozen=True)
-class DungeonMayhemCard:
-    """
-    The class for a card.
-    """
-
-    id: int
-    immune: int = 0
-    shield: int = 0
-    damage: int = 0
-    health: int = 0
-    actions: int = 0
-    draw: int = 0
-    damage_everyone: int = 0
-    power: Optional[Callable[[Any, Any, Any], None]] = None
+_all_cards_counter = count()
+_card_to_idx = {}
+_idx_to_card = {}
 
 
-# RogueImmune -- card.immune
+class DungeonMayhemCharacter:
+    ID = -1
 
-# RogeuDestroyShield
-# BarbarianDestroyShield
-# DestroyShield
-def DestroyShield(game: Any, player: Any, target: Any):
-    # Destroy the shield with most remaining value
-    if len(target.shields) == 0:
-        return
-    index = max(range(0, len(target.shields)), key=lambda i: target.shields[i][0])
-    target.destroy_shield(index)
+    def __init__(self, np_random):
+        self.np_random = np_random
+        self.hand: list[Card] = []
+        self.discardpile: list[Card] = []
+        self.deck: list[Card] = []
+        self.health = 10
+        self.shields: list[tuple[int, Card]] = []
+        self.immune = 0
+        self.actions = 1
+        self.idx_to_card: dict[int, Card] = {}
+        self.card_to_idx: dict[Card, int] = {}
 
+    def _new_deck(self, add):
+        raise NotImplementedError("Must override from subclass")
 
-# PaladinDestroyShields
-def PaladinDestroyShields(game: Any, player: Any, target: Any):
-    for p in game.players:
-        for _ in range(len(p.shields)):
-            p.destroy_shield()
+    @staticmethod
+    def new_deck(_new_deck):
+        deck = []
 
+        def add(*args, **kwargs):
+            deck.append(Card(id=next(_all_cards_counter), *args, **kwargs))
 
-# RogueStealDiscard
-def RogueStealDiscard(game: Any, player: Any, target: Any):
-    try:
-        card = target.discardpile.pop()
-        player.hand.append(card)
-        game.play_card(player, card, decr_actions=False)
-    except IndexError as e:
-        # Just waste your turn lol
-        pass
+        _new_deck(add)
 
+        card_to_idx = {card: card.id for card in deck}
+        _card_to_idx.update(card_to_idx)
+        idx_to_card = {card.id: card for card in deck}
+        _idx_to_card.update(idx_to_card)
 
-# PaladinGetDiscard
-def PaladinGetDiscard(game: Any, player: Any, target: Any):
-    pick = 0  # TODO: heuristic or card value table?
-    try:
-        card = player.discardpile.pop(pick)
-        player.hand.append(card)
-    except IndexError as e:
-        # Just waste your turn lol
-        pass
+        total_number_of_cards = len(deck)
 
+        return (deck, _card_to_idx, _idx_to_card, total_number_of_cards)
 
-# BarbarianDiscardHand
-def BarbarianDiscardHand(game: Any, player: Any, target: Any):
-    for p in game.players:
-        p.discard_hand()
-        for _ in range(3):
-            p.draw()
+    def start_turn(self):
+        self.actions = 1
+        self.immune = 0
+        self.draw()
 
+    def total_health(self):
+        return self.health + self.total_shields()
 
-# BarbarianHeal
-def BarbarianHeal(game: Any, barbarian: Any, target: Any):
-    barbarian.heal(3)
-    for p in game.players:
-        if p != barbarian:
-            p.take_damage(1)
+    def total_shields(self):
+        return sum(shield[0] for shield in self.shields)
 
+    def draw_n(self, n):
+        for _ in range(n):
+            self.draw()
 
-# WizardFireball -- card.damage_everyone
+    def draw(self):
+        if len(self.deck) == 0:
+            self.deck = self.discardpile
+            self.discardpile = []
+            self.np_random.shuffle(self.deck)
+        card = self.deck.pop()
+        self.hand.append(card)
+        return card
 
-# WizardStealShield
-def WizardStealShield(
-    game: Any,
-    wizard: Any,
-    target: Any,
-):
-    if len(target.shields) == 0:
-        return
-    shield = max(target.shields, key=lambda shield: shield[0])
-    wizard.shields.append(shield)
+    def destroy_shield(self, index=0):
+        (_, card) = self.shields.pop(index)
+        self.discardpile.append(card)
 
+    def heal(self, amt):
+        self.health += amt
+        if self.health > 10:
+            self.health = 10
 
-# WizardSwapHP
-def WizardSwapHP(
-    game: Any,
-    wizard: Any,
-    target: Any,
-):
-    wizard.health, target.health = target.health, wizard.health
+    def discard_hand(self):
+        for card in self.hand:
+            self.discardpile.append(card)
+            self.hand.remove(card)
 
+    def take_damage(self, amt):
+        for (i, (remaining, card)) in enumerate(self.shields):
+            left = remaining - amt
+            if left > 0:
+                self.shields[i] = (left, card)
+                return
+            else:
+                amt -= remaining
+                self.shields[i] = (0, card)
 
-MightPowers = {
-    "PaladinDestroyShields": PaladinDestroyShields,
-    "RogueStealDiscard": RogueStealDiscard,
-    "BarbarianDiscardHand": BarbarianDiscardHand,
-    "BarbarianHeal": BarbarianHeal,
-    "WizardStealShield": WizardStealShield,
-    "WizardSwapHP": WizardSwapHP,
-}
+        destroyed = [shield for shield in self.shields if shield[0] == 0]
+        self.discardpile.extend(shield[1] for shield in destroyed)
+        self.shields = [shield for shield in self.shields if shield[0] > 0]
+
+        self.health -= amt
+        if self.health <= 0:
+            self.health = 0
+            return True
+        return False
