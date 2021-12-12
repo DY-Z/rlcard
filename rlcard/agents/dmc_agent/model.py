@@ -138,9 +138,9 @@ class DMCModel:
                 
             self.agents.append(agent)
 
-    def share_memory(self):
-        for agent in self.agents:
-            agent.share_memory()
+    #def share_memory(self):
+    #    for agent in self.agents:
+    #        agent.share_memory()
 
     def eval(self):
         for agent in self.agents:
