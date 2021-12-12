@@ -134,7 +134,7 @@ class DMCModel:
                              exp_epsilon,
                              device)
             else:
-                agent = RandomAgent()
+                agent = RandomAgent(2)
                 
             self.agents.append(agent)
 
