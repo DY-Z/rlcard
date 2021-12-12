@@ -156,7 +156,7 @@ class DMCTrainer:
                              self.action_shape,
                              exp_epsilon=self.exp_epsilon,
                              device=device)
-            model.share_memory()
+            #model.share_memory()
             model.eval()
             models.append(model)
 
