@@ -68,7 +68,7 @@ def create_optimizers(num_players, learning_rate, momentum, epsilon, alpha, lear
     optimizers = []
     
     optimizer = torch.optim.RMSprop(
-            learner_model.parameters(player_id),
+            learner_model.parameters(0),
             lr=learning_rate,
             momentum=momentum,
             eps=epsilon,
