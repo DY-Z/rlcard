@@ -17,6 +17,7 @@ import numpy as np
 
 import torch
 from torch import nn
+from rlcard.agents.random_agent import RandomAgent
 
 class DMCNet(nn.Module):
     def __init__(self,
@@ -126,11 +127,15 @@ class DMCModel:
                  device=0):
         self.agents = []
         for player_id in range(len(state_shape)):
-            agent = DMCAgent(state_shape[player_id],
+            if player_id == 0:
+                agent = DMCAgent(state_shape[player_id],
                              action_shape[player_id],
                              mlp_layers,
                              exp_epsilon,
                              device)
+            else:
+                agent = RandomAgent()
+                
             self.agents.append(agent)
 
     def share_memory(self):
