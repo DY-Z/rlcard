@@ -143,8 +143,7 @@ class DMCModel:
     #        agent.share_memory()
 
     def eval(self):
-        for agent in self.agents:
-            agent.eval()
+        agent[0].eval()
 
     def parameters(self, index):
         return self.agents[index].parameters()
