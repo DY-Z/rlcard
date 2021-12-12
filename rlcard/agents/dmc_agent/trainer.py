@@ -259,7 +259,7 @@ class DMCTrainer:
             log.info('Saving checkpoint to %s', self.checkpointpath)
             _agents = learner_model.get_agents()
             torch.save({
-                'model_state_dict': [_agent.state_dict() for _agent in _agents],
+                'model_state_dict': [_agents[0].state_dict()],
                 'optimizer_state_dict': [optimizer.state_dict() for optimizer in optimizers],
                 "stats": stats,
                 'frames': frames,
