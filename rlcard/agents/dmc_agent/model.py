@@ -108,7 +108,7 @@ class DMCModel:
                  state_shape,
                  action_shape,
                  trainable = [1,0,0,0],
-                 mlp_layers=[512,512,512,512,512],
+                 mlp_layers=[512,512,512],
                  exp_epsilon=0.01,
                  device=0):
         self.agents = []
