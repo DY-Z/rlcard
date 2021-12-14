@@ -66,14 +66,14 @@ def create_buffers(T, num_buffers, state_shape, action_shape):
 
 def create_optimizers(num_players, learning_rate, momentum, epsilon, alpha, learner_model):
     optimizers = []
-    
-    optimizer = torch.optim.RMSprop(
-            learner_model.parameters(0),
+    for player_id in range(num_players):
+        optimizer = torch.optim.RMSprop(
+            learner_model.parameters(player_id),
             lr=learning_rate,
             momentum=momentum,
             eps=epsilon,
             alpha=alpha)
-    optimizers.append(optimizer)
+        optimizers.append(optimizer)
     return optimizers
 
 def act(i, device, T, free_queue, full_queue, model, buffers, env):
