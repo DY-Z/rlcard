@@ -113,7 +113,7 @@ class DMCModel:
                  device=0):
         self.agents = []
         for player_id in range(len(state_shape)):
-          if player_id == 1:
+          if trainable[player_id] == 1:
             agent = DMCAgent(state_shape[player_id],
                              action_shape[player_id],
                              mlp_layers,
