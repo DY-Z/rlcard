@@ -3,12 +3,12 @@ import numpy as np
 
 import torch
 from torch import nn
-from rlcard.agents.dungeonmayhem_random_agent import RandomAgent
+
 class DMCNet(nn.Module):
     def __init__(self,
                  state_shape,
                  action_shape,
-                 mlp_layers=[512,512,512,512,512]):
+                 mlp_layers=[512,512,512]):
         super().__init__()
         input_dim = np.prod(state_shape) + np.prod(action_shape)
         layer_dims = [input_dim] + mlp_layers
@@ -30,7 +30,7 @@ class DMCAgent:
     def __init__(self,
                  state_shape,
                  action_shape,
-                 mlp_layers=[512,512,512,512,512],
+                 mlp_layers=[512,512,512],
                  exp_epsilon=0.01,
                  device=0):
         self.use_raw = False
@@ -105,36 +105,36 @@ class DMCAgent:
 
 class DMCModel:
     def __init__(self,
-                 trainable_posi,
                  state_shape,
                  action_shape,
-                 mlp_layers=[512,512,512,512,512],
+                 trainable = [1,0,0,0],
+                 mlp_layers=[512,512,512],
                  exp_epsilon=0.01,
                  device=0):
-        self.trainable_posi = trainable_posi
         self.agents = []
-        for player_id in range(len(trainable_posi)):
-          if trainable_posi[player_id] == 1:
+        for player_id in range(len(state_shape)):
+          if trainable[player_id] == 1:
             agent = DMCAgent(state_shape[player_id],
                              action_shape[player_id],
                              mlp_layers,
                              exp_epsilon,
                              device)
-
           else:
-            agent = RandomAgent(2)
-            
+            agent = DMCAgent(state_shape[player_id],
+                             action_shape[player_id],
+                             [512],
+                             exp_epsilon,
+                             device)
+
           self.agents.append(agent)
 
     def share_memory(self):
-        for i in range(len(self.agents)):
-          if self.trainable_posi == 1:
-            self.agents[i].share_memory()
+        for agent in self.agents:
+            agent.share_memory()
 
     def eval(self):
-        for i in range(len(self.agents)):
-          if self.trainable_posi == 1:
-            self.agents[i].eval()
+        for agent in self.agents:
+            agent.eval()
 
     def parameters(self, index):
         return self.agents[index].parameters()
