@@ -14,6 +14,7 @@ import logging
 import traceback
 
 from rlcard.agents.dmc_agent.file_writer import FileWriter
+from rlcard.agents.dmc_agent.model import DMCModel
 from rlcard.agents.dmc_agent.utils import get_batch, create_buffers,  act,  log
 
 
