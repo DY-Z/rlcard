@@ -15,8 +15,24 @@ import traceback
 
 from rlcard.agents.dmc_agent.file_writer import FileWriter
 from rlcard.agents.dmc_agent.model import DMCModel
-from rlcard.agents.dmc_agent.utils import get_batch, create_buffers, create_optimizers, act, log
+from rlcard.agents.dmc_agent.utils import get_batch, create_buffers,  act, log
 
+
+def create_optimizers(trainable_posi, learning_rate, momentum, epsilon, alpha, learner_model):
+    optimizers = []
+    for player_id in range(len(trainable_posi)):
+      if trainable_posi[player_id] == 1:
+        optimizer = torch.optim.RMSprop(
+            learner_model.parameters(player_id),
+            lr=learning_rate,
+            momentum=momentum,
+            eps=epsilon,
+            alpha=alpha)
+      else:
+        optimizer = 0
+
+      optimizers.append(optimizer)
+    return optimizers
 
 def compute_loss(logits, targets):
     loss = ((logits - targets)**2).mean()
@@ -39,6 +55,8 @@ def learn(position,
     episode_returns = batch['episode_return'][batch['done']]
     mean_episode_return_buf[position].append(torch.mean(episode_returns).to(device))
 
+    print("Called")
+
     with lock:
         values = agent.forward(state, action)
         loss = compute_loss(values, target)
@@ -60,12 +78,12 @@ def learn(position,
 class DMCTrainer:    
     def __init__(self,
                  env,
-                 trainable = [1,0,0,0],
+                 trainable_posi = [1,0,0,0],
                  load_model=False,
                  xpid='dmc',
                  save_interval=30,
                  num_actor_devices=1,
-                 num_actors = 5,
+                 num_actors = 1,
                  training_device=0,
                  savedir='experiments/dmc_result',
                  total_frames=100000000000,
@@ -73,7 +91,7 @@ class DMCTrainer:
                  batch_size=32,
                  unroll_length=100,
                  num_buffers=50,
-                 num_threads=4,
+                 num_threads=1,
                  max_grad_norm=40,
                  learning_rate=0.001,
                  alpha=0.99,
@@ -81,6 +99,7 @@ class DMCTrainer:
                  epsilon=0.00001):
         '''
         Deep Monte-Carlo
+
         Args:
             env: RLCard environment
             load_model (boolean): Whether loading an existing model
@@ -132,24 +151,31 @@ class DMCTrainer:
         self.momentum = momentum
         self.epsilon = epsilon
 
-        self.trainable = trainable 
+        self.trainable_posi = trainable_posi
+        self.total_trainable = sum(trainable_posi)
 
         self.action_shape = self.env.action_shape
         if self.action_shape[0] == None:  # One-hot encoding
             self.action_shape = [[self.env.num_actions] for _ in range(self.env.num_players)]
 
         self.mean_episode_return_buf = [deque(maxlen=100) for _ in range(self.env.num_players)]
+        '''self.mean__episode_return_buf = []
+        for p in range(len(trainable_posi)):
+          if trainable_posi[p] == 1:
+            self.mean__episode_return_buf.append(deque(maxlen=100))
+          else:
+            self.mean__episode_return_buf.append([])'''
 
     def start(self):
         # Initialize actor models
         models = []
         for device in range(self.num_actor_devices):
-            model = DMCModel(
-                             self.env.state_shape,
-                             self.action_shape,
-                             self.trainable,
-                             exp_epsilon=self.exp_epsilon,
-                             device=device)
+            model = DMCModel(self.trainable_posi,
+                      self.env.state_shape,
+                      self.action_shape,
+                      exp_epsilon=self.exp_epsilon,
+                      device=device)
+            
             model.share_memory()
             model.eval()
             models.append(model)
@@ -165,21 +191,24 @@ class DMCTrainer:
         ctx = mp.get_context('spawn')
         free_queue = []
         full_queue = []
+        print("reach full queue")
         for device in range(self.num_actor_devices):
             _free_queue = [ctx.SimpleQueue() for _ in range(self.env.num_players)]
             _full_queue = [ctx.SimpleQueue() for _ in range(self.env.num_players)]
             free_queue.append(_free_queue)
             full_queue.append(_full_queue)
 
+        print("finished full queue")
         # Learner model for training
-        learner_model = DMCModel(
-                                  self.env.state_shape,
-                                 self.action_shape,
-                                 self.trainable,
-                                 device=self.training_device)
+        learner_model = DMCModel(self.trainable_posi,
+                      self.env.state_shape,
+                      self.action_shape,
+                      device=self.training_device)
+        
+        print(learner_model.agents)
 
         # Create optimizers
-        optimizers = create_optimizers(self.env.num_players,
+        optimizers = create_optimizers(self.trainable_posi,
                                        self.learning_rate,
                                        self.momentum,
                                        self.epsilon,
@@ -189,6 +218,7 @@ class DMCTrainer:
         # Stat Keys
         stat_keys = []
         for p in range(self.env.num_players):
+          if self.trainable_posi[p] == 1:
             stat_keys.append('mean_episode_return_'+str(p))
             stat_keys.append('loss_'+str(p))
         frames, stats = 0, {k: 0 for k in stat_keys}
@@ -199,6 +229,7 @@ class DMCTrainer:
                     self.checkpointpath, map_location="cuda:"+str(self.training_device)
             )
             for p in range(self.env.num_players):
+              if self.trainable_posi[p] == 1:
                 learner_model.get_agent(p).load_state_dict(checkpoint_states["model_state_dict"][p])
                 optimizers[p].load_state_dict(checkpoint_states["optimizer_state_dict"][p])
                 for device in range(self.num_actor_devices):
@@ -207,17 +238,23 @@ class DMCTrainer:
             frames = checkpoint_states["frames"]
             log.info(f"Resuming preempted job, current stats:\n{stats}")
 
-
+        print("done load model")
         # Starting actor processes
         for device in range(self.num_actor_devices):
             num_actors = self.num_actors
             for i in range(self.num_actors):
+                print(i, "reach")
                 actor = ctx.Process(
                     target=act,
                     args=(i, device, self.T, free_queue[device], full_queue[device], models[device], buffers[device], self.env))
+                print("actor done")
+                print(actor)
                 actor.start()
+                print("finish start")
                 actor_processes.append(actor)
+                print(i, "done")
 
+        print("done actor process")
         def batch_and_learn(i, device, position, local_lock, position_lock, lock=threading.Lock()):
             """Thread target for the learning process."""
             nonlocal frames, stats
@@ -237,15 +274,19 @@ class DMCTrainer:
         for device in range(self.num_actor_devices):
             for m in range(self.num_buffers):
                 for p in range(self.env.num_players):
+                  if self.trainable_posi[p] == 1:
                     free_queue[device][p].put(m)
 
-        threads = []
-        locks = [[threading.Lock() for _ in range(self.env.num_players)] for _ in range(self.num_actor_devices)]
-        position_locks = [threading.Lock() for _ in range(self.env.num_players)]
+        threads = [] 
+        locks = [[threading.Lock() if self.trainable_posi[i] == 1 else 0 for i in range(self.env.num_players)] for _ in range(self.num_actor_devices)]
 
+        #position_locks = [threading.Lock() for _ in range(self.env.num_players)]
+        position_locks = [threading.Lock() if self.trainable_posi[i] == 1 else 0 for i in range(self.env.num_players)]
+        
         for device in range(self.num_actor_devices):
             for i in range(self.num_threads):
                 for position in range(self.env.num_players):
+                  if self.trainable_posi[position] == 1:
                     thread = threading.Thread(
                         target=batch_and_learn, name='batch-and-learn-%d' % i, args=(i,device,position,locks[device][position],position_locks[position]))
                     thread.start()
@@ -255,14 +296,15 @@ class DMCTrainer:
             log.info('Saving checkpoint to %s', self.checkpointpath)
             _agents = learner_model.get_agents()
             torch.save({
-                'model_state_dict': [_agent.state_dict() for _agent in _agents],
-                'optimizer_state_dict': [optimizer.state_dict() for optimizer in optimizers],
+                'model_state_dict': [_agents[i].state_dict() if self.trainable_posi[i] == 1 else 0 for i in range(len(_agents))],
+                'optimizer_state_dict': [optimizers[i].state_dict() if self.trainable_posi[i] == 1 else 0 for i in range(len(optimizers))],
                 "stats": stats,
                 'frames': frames,
             }, self.checkpointpath)
 
             # Save the weights for evaluation purpose
             for position in range(self.env.num_players):
+              if self.trainable_posi[position] == 1:
                 model_weights_dir = os.path.expandvars(os.path.expanduser(
                     '%s/%s/%s' % (self.savedir, self.xpid, str(position)+'_'+str(frames)+'.pth')))
                 torch.save(learner_model.get_agent(position), model_weights_dir)
